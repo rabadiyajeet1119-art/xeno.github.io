@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Xeno AI Workspace</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        /* --- DARK THEME VARIABLES (WITH RED ACCENT) --- */
+        :root {
+            --bg-color: #000000;
+            --msg-user-bg: #fc2c03; /* Red Theme */
+            --msg-user-text: #ffffff;
+            --msg-bot-bg: rgba(255, 42, 0, 0.1);
+            --msg-bot-text: #e2e8f0;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-red: #ef4444;
+            --sidebar-bg: #0a0a0a;
+            --sidebar-width: 260px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+        body, html {
+            height: 100%; width: 100%; overflow: hidden; display: flex; flex-direction: column; background: var(--bg-color); color: white;
+        }
+
+        /* --- 3D CANVAS (Responsive) --- */
+        #canvas-container {
+            position: fixed; 
+            top: 0; 
+            height: 100%; 
+            z-index: 0; 
+            pointer-events: none; 
+            filter: blur(5px) brightness(0.1);
+            /* Desktop Default: Sidebar ki wajah se shift */
+            left: var(--sidebar-width);
+            width: calc(100% - var(--sidebar-width));
+            transition: 0.3s ease;
+        }
+
+        /* --- SIDEBAR (Desktop Default: Always Open) --- */
+        .sidebar {
+            position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100%;
+            background: var(--sidebar-bg); border-right: 1px solid var(--border-color);
+            z-index: 2000; display: flex; flex-direction: column;
+            padding: 1rem; backdrop-filter: blur(10px);
+            transition: 0.3s ease;
+        }
+        
+        .new-chat-btn {
+            background: rgba(255, 42, 0, 0.1); color: white; border: none; padding: 12px;
+            border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+			transition: 0.2s; 
+        }
+        .new-chat-btn:hover { background:  #fc2c03; transform: translateY(-1px); }
+
+        .session-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+        .session-item {
+            padding: 10px; border-radius: 6px; cursor: pointer; color: #ccc;
+            display: flex; justify-content: space-between; align-items: center;
+            transition: 0.2s; font-size: 0.9rem;
+        }
+        .session-item:hover { background: rgba(255,255,255,0.1); color: white; }
+        .session-item.active { background: rgba(255, 42, 0, 0.2); border: 1px solid var(--accent-red); color: white; }
+        .delete-icon { color: #666; font-size: 1.2rem; padding: 0 5px; }
+        .delete-icon:hover { color: var(--accent-red); }
+
+        /* Overlay (Hidden on Desktop) */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1500; display: none;
+        }
+
+        /* --- LAYOUT ADJUSTMENTS (Desktop) --- */
+        .navbar, .chat-area, .input-container {
+            margin-left: var(--sidebar-width); 
+            width: calc(100% - var(--sidebar-width));
+            transition: 0.3s ease;
+        }
+
+        .navbar {
+            height: 60px; border-bottom: 1px solid var(--border-color); 
+            display: flex; align-items: center; justify-content: space-between; 
+            padding: 0 2rem; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px);
+            position: relative; z-index: 1000; overflow: visible; 
+        }
+
+        /* Desktop par Menu Button chupa rahega */
+        .menu-btn { 
+            display: none; 
+            background: none; border: none; color: white; cursor: pointer; margin-right: 15px; 
+        }
+
+        .chat-area { 
+            flex: 1; overflow-y: auto; padding: 20px 15%; 
+            display: flex; flex-direction: column; gap: 1.5rem; 
+            scroll-behavior: smooth; position: relative; z-index: 10; 
+        }
+
+        .input-container { 
+            position: relative; z-index: 1000; padding: 1.5rem 2rem; 
+            background: rgba(0, 0, 0, 0.8); border-top: 1px solid var(--border-color); 
+            display: flex; align-items: center; gap: 1rem; backdrop-filter: blur(10px);
+        }
+
+        /* 🔥🔥🔥 MOBILE RESPONSIVE CSS (The Logic You Asked For) 🔥🔥🔥 */
+        @media (max-width: 768px) {
+            /* 1. Sidebar ko Screen se bahar fenk do */
+            .sidebar { left: -260px; }
+            .sidebar.open { left: 0; } /* Jab open class lagegi tab dikhega */
+
+            /* 2. Main Content ko wapas full width kar do */
+            .navbar, .chat-area, .input-container {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            /* 3. Canvas ko center mein le aao */
+            #canvas-container {
+                left: 0;
+                width: 100%;
+            }
+
+            /* 4. Menu Button dikhao */
+            .menu-btn { display: block; }
+
+            /* 5. Overlay ko active hone par dikhao */
+            .overlay.active { display: block; }
+
+            /* Adjust padding for mobile */
+            .chat-area { padding: 20px 1rem; }
+            .input-container { padding: 1rem; }
+            .navbar { padding: 0 1rem; }
+        }
+
+        /* --- UI COMPONENTS --- */
+        .logo { font-size: 1.25rem; font-weight: 800; color: white; display: flex; align-items: center; gap: 10px; letter-spacing: 1px; }
+        .live-indicator { height: 8px; width: 8px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 8px #22c55e; }
+        .chat-area::-webkit-scrollbar { width: 6px; }
+        .chat-area::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 3px; }
+        .message { max-width: 80%; padding: 1rem 1.5rem; border-radius: 12px; font-size: 1rem; line-height: 1.6; }
+        .msg-bot { background-color: var(--msg-bot-bg); color: var(--msg-bot-text); margin-right: auto; border-bottom-left-radius: 2px; border: 1px solid rgba(255,255,255,0.05); }
+        .msg-user { background-color: var(--msg-user-bg); color: var(--msg-user-text); margin-left: auto; border-bottom-right-radius: 2px; box-shadow: -5px 6px 15px rgba(255, 255, 255, 0.2); }
+        .input-wrapper { flex: 1; }
+        input[type="text"] { width: 100%; padding: 1rem 1.5rem; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); outline: none; background: rgba(255,255,255,0.1); color: white; }
+        input[type="text"]:focus { background: rgba(255,255,255,0.15); border-color: #fc2c03; } 
+        .icon-btn { background: transparent; border: none; cursor: pointer; padding: 10px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; transition: 0.2s; }
+        .icon-btn:hover { background-color: rgba(255,255,255,0.1); color: white; transform: translateY(-1px); }
+        .btn-stop { color: var(--accent-red); }
+        .btn-send { background: #fc2c03; color: black; width: 45px; height: 45px; border-radius: 50%; flex-shrink: 0; }
+        .btn-send:hover { background: rgba(255, 42, 0, 0.8); transform: scale(1.05); }
+        #loading-3d { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; color: #4b5563; z-index: 1; letter-spacing: 1px; }
+        
+        .controls-group { display: flex; align-items: center; gap: 15px; }
+        .voice-dropdown { background: rgba(255, 42, 0, 0.7); color: white; border: 1px solid rgba(255, 255, 255, 0.2); padding: 6px 10px; border-radius: 12px; outline: none; font-size: 0.85rem; cursor: pointer; max-width: 140px; transition: 0.2s; }
+        .voice-dropdown option { background: #000; color: white; }
+        .volume-control-wrapper { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; padding: 0 10px; cursor: pointer; }
+        .volume-slider-popup { display: none; position: absolute; top: 50px; left: 50%; transform: translateX(-50%); width: 35px; height: 140px; background: #0000; border: 1px solid rgba(255,255,255,0.2); border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); align-items: center; justify-content: center; z-index: 2000; }
+        .volume-slider-popup.show { display: flex; }
+        input[type=range] { -webkit-appearance: slider-vertical; width: 4px; height: 100px; background: #fc2c03; cursor: pointer; }
+        .mic-active { background-color: #ef4444 !important; color: white !important; box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body>
+
+    <div class="overlay" id="overlay"></div>
+    <div class="sidebar" id="sidebar">
+        <button class="new-chat-btn" onclick="startNewChat()">+ New Chat</button>
+        <div class="session-list" id="sessionList"></div>
+    </div>
+
+    <div id="loading-3d">INITIALIZING NEURAL INTERFACE...</div>
+    <div id="canvas-container"></div>
+
+    <header class="navbar">
+        <div style="display: flex; align-items: center;">
+            <button class="menu-btn" onclick="toggleSidebar()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <div class="logo"><span>XENO</span><span class="live-indicator"></span></div>
+        </div>
+        
+        <div class="controls-group">
+            <select id="voiceSelect" class="voice-dropdown"><option value="default">Loading...</option></select>
+            <div class="volume-control-wrapper" id="volumeWrapper">
+                <div class="volume-slider-popup" id="volumePopup"><input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1"></div>
+                <button class="icon-btn muted" id="voiceToggleBtn"><svg id="voiceIcon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg></button>
+            </div>
+        </div>
+    </header>
+
+    <main class="chat-area" id="chatBox">
+        <div class="message-wrapper"><div class="message msg-bot">System Online. I am Xeno.</div></div>
+    </main>
+
+    <footer class="input-container">
+        <button class="icon-btn btn-stop" id="stopBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+        <div class="input-wrapper"><input type="text" id="userInput" placeholder="Command..." autocomplete="off"></div>
+        <button class="icon-btn" id="micBtn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
+        <button class="icon-btn btn-send" id="sendBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+    </footer>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        const container = document.getElementById('canvas-container');
+        const loaderDiv = document.getElementById('loading-3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.Fog(0x050505, -1, 8);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 100);
+        camera.position.set(0, -0.1, 3.5);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; 
+        renderer.toneMappingExposure = 1.1;
+        container.appendChild(renderer.domElement);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+        const spotLight = new THREE.SpotLight(0x3b82f6, 5);
+        spotLight.position.set(-5, 5, 5);
+        scene.add(spotLight);
+        const pointLight = new THREE.PointLight(0xff4400, -30);
+        pointLight.position.set(5, -2, 5);
+        scene.add(pointLight);
+        const frontLight = new THREE.DirectionalLight(0xffffff, -1);
+        frontLight.position.set(200, 50, 50);
+        scene.add(frontLight);
+        let head;
+        const loader = new GLTFLoader();
+        
+        // 🔥 CHANGE HERE: Face ko 90 degree ghumaya taaki wo saamne dekhe 🔥
+        const faceOffset = -Math.PI / 2; 
+
+        loader.load('/static/face.glb', function (gltf) {
+            head = gltf.scene;
+            head.scale.set(1, 1, 1); 
+            head.rotation.y = faceOffset; 
+            const box = new THREE.Box3().setFromObject(head);
+            const center = box.getCenter(new THREE.Vector3());
+            head.position.x += (head.position.x - center.x);
+            head.position.y += (head.position.y - center.y);
+            head.position.z += (head.position.z - center.z);
+            
+            // 👇👇 LEFT SHIFT FOR DESKTOP (Will be auto-centered on mobile via CSS) 👇👇
+            head.position.x -= 0.9; 
+            head.position.y -= 0;
+            
+            scene.add(head);
+            loaderDiv.style.display = 'none';
+        }, undefined, function (error) { console.error(error); loaderDiv.innerText = "Error Loading Face."; });
+        let mouseX =0; let mouseY = 0;
+        const windowHalfX = window.innerWidth / 2;
+        const windowHalfY = window.innerHeight / 2;
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX - windowHalfX);
+            mouseY = (event.clientY - windowHalfY);
+        });
+        function animate() {
+            requestAnimationFrame(animate);
+            if (head) {
+                const targetX = mouseX * 0.0005;
+                const targetY = mouseY * 0.0005;
+                head.rotation.y += 0.05* (faceOffset + targetX - head.rotation.y);
+                head.rotation.x += 0.05* (targetY - head.rotation.x);
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+
+    <script>
+        const chatBox=document.getElementById('chatBox'),userInput=document.getElementById('userInput'),sendBtn=document.getElementById('sendBtn'),micBtn=document.getElementById('micBtn'),stopBtn=document.getElementById('stopBtn'),volumeSlider=document.getElementById('volumeSlider'),voiceToggleBtn=document.getElementById('voiceToggleBtn'),voiceIcon=document.getElementById('voiceIcon');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        const sessionList = document.getElementById('sessionList');
+
+        let isVoiceEnabled=false;
+        let voices = [];
+        let currentSessionId = null;
+
+        // --- SIDEBAR TOGGLE ---
+        function toggleSidebar() {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            if(sidebar.classList.contains('open')) loadSessions();
+        }
+        overlay.onclick = toggleSidebar;
+
+        async function loadSessions() {
+            const res = await fetch('/sessions');
+            const sessions = await res.json();
+            sessionList.innerHTML = '';
+            sessions.forEach(s => {
+                const div = document.createElement('div');
+                div.className = `session-item ${s.id === currentSessionId ? 'active' : ''}`;
+                div.innerHTML = `<span>${s.title}</span> <span class="delete-icon" onclick="deleteSession(event, ${s.id})">×</span>`;
+                div.onclick = (e) => { if(e.target.className !== 'delete-icon') loadChat(s.id); };
+                sessionList.appendChild(div);
+            });
+        }
+        loadSessions();
+
+        async function loadChat(id) {
+            currentSessionId = id;
+            chatBox.innerHTML = ''; 
+            const res = await fetch(`/sessions/${id}`);
+            const messages = await res.json();
+            messages.forEach(m => appendMessage(m.content, m.role));
+            // Close sidebar on mobile after selecting
+            if(window.innerWidth <= 768) toggleSidebar();
+            loadSessions();
+        }
+
+        function startNewChat() {
+            currentSessionId = null;
+            chatBox.innerHTML = '<div class="message-wrapper"><div class="message msg-bot">System Online. I am Xeno.</div></div>';
+            if(window.innerWidth <= 768) toggleSidebar();
+            loadSessions();
+        }
+
+        async function deleteSession(e, id) {
+            e.stopPropagation();
+            if(confirm('Delete this chat?')) {
+                await fetch(`/sessions/${id}`, { method: 'DELETE' });
+                loadSessions();
+                if(currentSessionId === id) startNewChat();
+            }
+        }
+
+        // --- VOICE LOGIC ---
+        function populateVoices() {
+            voices = window.speechSynthesis.getVoices();
+            voiceSelect.innerHTML = '';
+            voices.forEach((voice, index) => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.value = index;
+                if (voice.default || voice.name.includes('Google US English')) option.selected = true;
+                voiceSelect.appendChild(option);
+            });
+        }
+        if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = populateVoices;
+        populateVoices();
+
+        const volumeWrapper = document.getElementById('volumeWrapper');
+        const volumePopup = document.getElementById('volumePopup');
+        let hoverTimeout;
+        volumeWrapper.addEventListener('mouseenter', () => { clearTimeout(hoverTimeout); volumePopup.classList.add('show'); });
+        volumeWrapper.addEventListener('mouseleave', () => { hoverTimeout = setTimeout(() => { volumePopup.classList.remove('show'); }, 500); });
+        volumePopup.addEventListener('mouseenter', () => { clearTimeout(hoverTimeout); });
+
+        const iconSoundOn='<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>',iconSoundOff='<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>';
+        voiceToggleBtn.addEventListener('click',()=>{isVoiceEnabled=!isVoiceEnabled;if(isVoiceEnabled){voiceIcon.innerHTML=iconSoundOn;voiceToggleBtn.classList.remove('muted')}else{voiceIcon.innerHTML=iconSoundOff;voiceToggleBtn.classList.add('muted');window.speechSynthesis.cancel()}});
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition; let isListening = false;
+        if(SpeechRecognition){
+            recognition = new SpeechRecognition();
+            recognition.continuous = false; recognition.lang = 'hi-IN';
+            recognition.onstart = () => { isListening = true; micBtn.classList.add('mic-active'); };
+            recognition.onend = () => { isListening = false; micBtn.classList.remove('mic-active'); };
+            recognition.onresult = (e) => { userInput.value = e.results[0][0].transcript; sendMessage(); };
+            micBtn.addEventListener('click', () => { if(isListening) recognition.stop(); else recognition.start(); });
+        } else { micBtn.style.display = 'none'; }
+
+        function speak(e){
+            window.speechSynthesis.cancel();
+            if(isVoiceEnabled){
+                const t=new SpeechSynthesisUtterance(e);
+                const selectedVoiceIndex = voiceSelect.value;
+                if(voices[selectedVoiceIndex]) t.voice = voices[selectedVoiceIndex];
+                t.volume=parseFloat(volumeSlider.value);
+                window.speechSynthesis.speak(t);
+            }
+        }
+        volumeSlider.addEventListener('change',()=>{if(isVoiceEnabled&&!window.speechSynthesis.speaking){const e=new SpeechSynthesisUtterance("VOLUME");const selectedVoiceIndex = voiceSelect.value;if(voices[selectedVoiceIndex]) {e.voice = voices[selectedVoiceIndex];}e.volume=parseFloat(volumeSlider.value);window.speechSynthesis.speak(e)}});
+        stopBtn.addEventListener('click',()=>{window.speechSynthesis.cancel()});
+
+        function appendMessage(e,t){
+            const n=document.createElement('div');n.classList.add('message-wrapper');
+            const s=document.createElement('div');s.classList.add('message',t==='user'?'msg-user':'msg-bot');s.innerText=e;
+            n.appendChild(s);chatBox.appendChild(n);chatBox.scrollTop=chatBox.scrollHeight;
+        }
+
+        async function sendMessage(){
+            const e=userInput.value.trim();if(!e)return;
+            appendMessage(e,'user');userInput.value='';
+            const t=document.createElement('div');t.classList.add('message-wrapper');
+            const n=document.createElement('div');n.classList.add('message','msg-bot');n.innerText="...";n.id="loading";t.appendChild(n);
+            chatBox.scrollTop=chatBox.scrollHeight;chatBox.appendChild(t);
+            
+            const s=["price","news","weather","score","latest","who won","live","date","when","stock","meaning","what is","who is","search","result","cricket","match","movie","crash","accident","recent","gold","silver"];
+            if((s.some(t=>e.toLowerCase().includes(t))||e.includes("?"))&&isVoiceEnabled){
+                speak("Let me search Google.");
+            }
+
+            try{
+                const t=await fetch('/ask',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({message:e, session_id: currentSessionId})
+                });
+                const s=await t.json();
+                document.getElementById('loading').parentNode.remove();
+                if(s.session_id) currentSessionId = s.session_id;
+                loadSessions(); 
+                appendMessage(s.reply,'bot');
+                speak(s.reply);
+            } catch(e){
+                if(document.getElementById('loading'))document.getElementById('loading').parentNode.remove();
+                appendMessage("Connection Error.",'bot');
+            }
+        }
+        sendBtn.addEventListener('click',sendMessage);userInput.addEventListener('keypress',(e)=>{if(e.key==='Enter')sendMessage()});
+    </script>
+</body>
+</html>

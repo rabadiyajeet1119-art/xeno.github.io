@@ -9,7 +9,7 @@ app = Flask(__name__)
 # =========================
 # CONFIG & KEYS
 # =========================
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 SERPAPI_KEY = "cd194f7cdffbf618db1e90cc998ae24d7266e0d4c9cc4537b9f0cae99283cd47"
 DB_FILE = "xeno.db"
@@ -160,7 +160,9 @@ def ask():
 
             return jsonify({"reply": clean_reply, "session_id": session_id})
         else:
-            return jsonify({"reply": "System Error."})
+    return jsonify({
+        "reply": f"OpenRouter Error: {r.status_code} | {r.text}"
+    })
     except Exception as e:
         return jsonify({"reply": "Connection Error."})
 

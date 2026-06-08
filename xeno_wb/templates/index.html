@@ -419,6 +419,14 @@
                 });
                 const s=await t.json();
                 document.getElementById('loading').parentNode.remove();
+
+                // 🚨 NAYA POPUP LOGIC ADD KIYA GAYA HAI 🚨
+                if (!t.ok || s.error) {
+                    alert("⚠️ Xeno System Error ⚠️\n\n" + (s.error || "Unknown API Error occurred"));
+                    return; 
+                }
+                // ------------------------------------------
+
                 if(s.session_id) currentSessionId = s.session_id;
                 loadSessions(); 
                 appendMessage(s.reply,'bot');

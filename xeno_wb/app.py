@@ -18,19 +18,15 @@ DB_FILE = "xeno.db"
 # DATABASE HANDLER
 # =========================
 def init_db():
-    """Create database tables if they don't exist."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # Table for Chat Sessions
     c.execute('''CREATE TABLE IF NOT EXISTS sessions 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    # Table for Messages
     c.execute('''CREATE TABLE IF NOT EXISTS messages 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER, role TEXT, content TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
 
-# Initialize DB on start
 init_db()
 
 def get_db_connection():
@@ -71,12 +67,10 @@ def search_internet(query):
 # =========================
 # ROUTES (CHAT HISTORY APIs)
 # =========================
-
 @app.route('/')
 def home():
     return render_template('index.html')
 
-# 1. Get All Sessions (Sidebar List)
 @app.route('/sessions', methods=['GET'])
 def get_sessions():
     conn = get_db_connection()
@@ -84,7 +78,6 @@ def get_sessions():
     conn.close()
     return jsonify([dict(s) for s in sessions])
 
-# 2. Get Specific Chat Messages
 @app.route('/sessions/<int:session_id>', methods=['GET'])
 def get_chat_history(session_id):
     conn = get_db_connection()
@@ -92,7 +85,6 @@ def get_chat_history(session_id):
     conn.close()
     return jsonify([dict(m) for m in messages])
 
-# 3. Delete Session
 @app.route('/sessions/<int:session_id>', methods=['DELETE'])
 def delete_session(session_id):
     conn = get_db_connection()
@@ -103,30 +95,26 @@ def delete_session(session_id):
     return jsonify({"status": "deleted"})
 
 # =========================
-# MAIN ASK ROUTE (UPDATED)
+# MAIN ASK ROUTE (UPDATED FOR POPUP)
 # =========================
 @app.route('/ask', methods=['POST'])
 def ask():
     data = request.json
     user_input = data.get('message', '')
-    session_id = data.get('session_id') # Frontend sends session ID
+    session_id = data.get('session_id') 
     
     text_lower = user_input.lower()
     
-    # --- 1. Manage Session ---
     conn = get_db_connection()
     if not session_id:
-        # Create new session if not exists
         title = user_input[:30] + "..." if len(user_input) > 30 else user_input
         cursor = conn.execute('INSERT INTO sessions (title) VALUES (?)', (title,))
         session_id = cursor.lastrowid
         conn.commit()
     
-    # Save User Message
     conn.execute('INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)', (session_id, 'user', user_input))
     conn.commit()
 
-    # --- 2. Search Logic ---
     search_triggers = ["price", "news", "weather", "score", "latest", "live", "date", "stock", "who is", "meaning", "cricket"]
     search_data = None
     if any(t in text_lower for t in search_triggers) or "?" in user_input:
@@ -153,18 +141,18 @@ def ask():
             ai_text = r.json()["choices"][0]["message"]["content"]
             clean_reply = remove_symbols(ai_text)
             
-            # Save Bot Message
             conn.execute('INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)', (session_id, 'bot', clean_reply))
             conn.commit()
             conn.close()
 
             return jsonify({"reply": clean_reply, "session_id": session_id})
         else:
-    return jsonify({
-        "reply": f"OpenRouter Error: {r.status_code} | {r.text}"
-    })
+            # NAYA CHANGE: Popup UI ko exactly error detail bhejna
+            error_details = r.text
+            return jsonify({"error": f"API Status Code: {r.status_code}\nDetail: {error_details}"}), 400
     except Exception as e:
-        return jsonify({"reply": "Connection Error."})
+        # NAYA CHANGE: Server exception ko handle karna
+        return jsonify({"error": f"Backend Exception:\n{str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
